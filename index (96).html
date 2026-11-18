@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dalbit FM 효과 레이어</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+  body.preview { background: radial-gradient(ellipse at 50% 20%, #1d2b52 0%, #0b1226 60%, #050914 100%); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .bar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: none; gap: 6px;
+         background: rgba(10,16,34,.75); padding: 6px; border-radius: 999px; font-family: system-ui, sans-serif; z-index: 2; }
+  body.preview .bar { display: flex; }
+  .bar button { border: 0; background: transparent; color: #cfd8f5; padding: 8px 14px; border-radius: 999px; font-size: 14px; cursor: pointer; }
+  .bar button.on { background: #f1d48a; color: #1a1f33; font-weight: 600; }
+  .note { position: fixed; top: 14px; left: 0; right: 0; text-align: center; color: rgba(220,228,255,.55);
+          font: 12px system-ui, sans-serif; display: none; }
+  body.preview .note { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="note">미리보기용 배경입니다 · LIVE Studio에서는 배경이 투명하게 나와요</div>
+<div class="bar">
+  <button data-m="snow">❄ 눈</button>
+  <button data-m="rain">☔ 비</button>
+  <button data-m="petals">🌸 꽃잎</button>
+</div>
+<script>
+(() => {
+  const cv = document.getElementById('c');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1, parts = [], mode = 'snow';
+
+  // 미리보기(채팅 옆·iframe 안)일 때만 어두운 배경과 버튼을 보여줌
+  let inFrame = false;
+  try { inFrame = window.self !== window.top; } catch (e) { inFrame = true; }
+  if (inFrame || location.hash === '#preview') document.body.classList.add('preview');
+
+  function readMode() {
+    const h = (location.hash || '').replace('#', '');
+    const q = new URLSearchParams(location.search).get('mode');
+    const m = q || h;
+    return ['snow', 'rain', 'petals'].includes(m) ? m : 'snow';
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function make(fromTop) {
+    const p = { x: rnd(0, W), y: fromTop ? rnd(-H * 0.2, -10) : rnd(0, H), t: rnd(0, 1000) };
+    if (mode === 'snow') {
+      const depth = Math.random();            // 0 = 멀리, 1 = 가까이
+      p.r = 0.8 + depth * 2.6;
+      p.vy = 18 + depth * 42;
+      p.sway = rnd(8, 26);
+      p.freq = rnd(0.3, 0.8);
+      p.a = 0.35 + depth * 0.55;
+    } else if (mode === 'rain') {
+      const depth = Math.random();
+      p.len = 10 + depth * 22;
+      p.vy = 420 + depth * 520;
+      p.vx = -40 - depth * 30;
+      p.a = 0.12 + depth * 0.28;
+      p.w = 0.6 + depth * 0.9;
+    } else {
+      const depth = Math.random();
+      p.s = 5 + depth * 7;
+      p.vy = 22 + depth * 30;
+      p.sway = rnd(20, 50);
+      p.freq = rnd(0.25, 0.6);
+      p.rot = rnd(0, Math.PI * 2);
+      p.vr = rnd(-1.2, 1.2);
+      p.flip = rnd(0, Math.PI * 2);
+      p.a = 0.55 + depth * 0.4;
+      p.hue = rnd(335, 355);
+    }
+    return p;
+  }
+
+  function count() {
+    const area = (W * H) / (1080 * 1920);
+    const base = mode === 'snow' ? 170 : mode === 'rain' ? 260 : 55;
+    return Math.max(20, Math.round(base * Math.max(area, 0.35)));
+  }
+
+  function reset() {
+    mode = readMode();
+    parts = Array.from({ length: count() }, () => make(false));
+    document.querySelectorAll('.bar button').forEach(b => b.classList.toggle('on', b.dataset.m === mode));
+  }
+
+  function drawPetal(p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.scale(1, Math.abs(Math.cos(p.flip)) * 0.7 + 0.3);
+    ctx.globalAlpha = p.a;
+    ctx.fillStyle = `hsl(${p.hue}, 75%, 84%)`;
+    ctx.beginPath();
+    ctx.moveTo(0, -p.s);
+    ctx.bezierCurveTo(p.s * 0.9, -p.s * 0.6, p.s * 0.7, p.s * 0.7, 0, p.s);
+    ctx.bezierCurveTo(-p.s * 0.7, p.s * 0.7, -p.s * 0.9, -p.s * 0.6, 0, -p.s);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      p.t += dt;
+      if (mode === 'snow') {
+        p.y += p.vy * dt;
+        const x = p.x + Math.sin(p.t * p.freq * Math.PI * 2) * p.sway;
+        ctx.globalAlpha = p.a;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+        if (p.r > 2.4) { // 가까운 눈송이는 살짝 번지게
+          ctx.globalAlpha = p.a * 0.18;
+          ctx.beginPath(); ctx.arc(x, p.y, p.r * 2.4, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (mode === 'rain') {
+        p.y += p.vy * dt; p.x += p.vx * dt;
+        ctx.globalAlpha = p.a;
+        ctx.strokeStyle = '#cfe0ff';
+        ctx.lineWidth = p.w;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * 0.03, p.y + p.len);
+        ctx.stroke();
+      } else {
+        p.y += p.vy * dt;
+        p.x += Math.sin(p.t * p.freq * Math.PI * 2) * p.sway * dt + 12 * dt;
+        p.rot += p.vr * dt;
+        p.flip += 1.6 * dt;
+        drawPetal(p);
+      }
+      if (p.y > H + 30 || p.x < -60 || p.x > W + 60) parts[i] = make(true);
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+
+  document.querySelectorAll('.bar button').forEach(b => b.addEventListener('click', () => {
+    location.hash = b.dataset.m;
+  }));
+  window.addEventListener('hashchange', reset);
+  window.addEventListener('resize', () => { resize(); reset(); });
+
+  resize();
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
