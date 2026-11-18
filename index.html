@@ -30,7 +30,7 @@
 (() => {
   const cv = document.getElementById('c');
   const ctx = cv.getContext('2d');
-  let W = 0, H = 0, DPR = 1, parts = [], mode = 'snow';
+  let W = 0, H = 0, DPR = 1, K = 1, parts = [], mode = 'snow';
 
   // 미리보기(채팅 옆·iframe 안)일 때만 어두운 배경과 버튼을 보여줌
   let inFrame = false;
@@ -47,6 +47,7 @@
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth; H = window.innerHeight;
+    K = Math.max(1, Math.min(W, H * 0.5625) / 420); // 큰 화면(1080x1920)에서도 눈송이가 작아지지 않게
     cv.width = W * DPR; cv.height = H * DPR;
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
@@ -57,23 +58,23 @@
     const p = { x: rnd(0, W), y: fromTop ? rnd(-H * 0.2, -10) : rnd(0, H), t: rnd(0, 1000) };
     if (mode === 'snow') {
       const depth = Math.random();            // 0 = 멀리, 1 = 가까이
-      p.r = 0.8 + depth * 2.6;
-      p.vy = 18 + depth * 42;
-      p.sway = rnd(8, 26);
+      p.r = (1.2 + depth * 3.2) * K;
+      p.vy = (22 + depth * 48) * K;
+      p.sway = rnd(8, 26) * K;
       p.freq = rnd(0.3, 0.8);
-      p.a = 0.35 + depth * 0.55;
+      p.a = 0.5 + depth * 0.5;
     } else if (mode === 'rain') {
       const depth = Math.random();
-      p.len = 10 + depth * 22;
-      p.vy = 420 + depth * 520;
-      p.vx = -40 - depth * 30;
-      p.a = 0.12 + depth * 0.28;
-      p.w = 0.6 + depth * 0.9;
+      p.len = (12 + depth * 24) * K;
+      p.vy = (420 + depth * 520) * K;
+      p.vx = (-40 - depth * 30) * K;
+      p.a = 0.18 + depth * 0.32;
+      p.w = (0.7 + depth * 1.0) * K;
     } else {
       const depth = Math.random();
-      p.s = 5 + depth * 7;
-      p.vy = 22 + depth * 30;
-      p.sway = rnd(20, 50);
+      p.s = (5 + depth * 7) * K;
+      p.vy = (22 + depth * 30) * K;
+      p.sway = rnd(20, 50) * K;
       p.freq = rnd(0.25, 0.6);
       p.rot = rnd(0, Math.PI * 2);
       p.vr = rnd(-1.2, 1.2);
@@ -86,7 +87,7 @@
 
   function count() {
     const area = (W * H) / (1080 * 1920);
-    const base = mode === 'snow' ? 170 : mode === 'rain' ? 260 : 55;
+    const base = mode === 'snow' ? 220 : mode === 'rain' ? 260 : 60;
     return Math.max(20, Math.round(base * Math.max(area, 0.35)));
   }
 
@@ -126,7 +127,7 @@
         ctx.globalAlpha = p.a;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath(); ctx.arc(x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-        if (p.r > 2.4) { // 가까운 눈송이는 살짝 번지게
+        if (p.r > 2.6 * K) { // 가까운 눈송이는 살짝 번지게
           ctx.globalAlpha = p.a * 0.18;
           ctx.beginPath(); ctx.arc(x, p.y, p.r * 2.4, 0, Math.PI * 2); ctx.fill();
         }
@@ -141,7 +142,7 @@
         ctx.stroke();
       } else {
         p.y += p.vy * dt;
-        p.x += Math.sin(p.t * p.freq * Math.PI * 2) * p.sway * dt + 12 * dt;
+        p.x += Math.sin(p.t * p.freq * Math.PI * 2) * p.sway * dt + 12 * K * dt;
         p.rot += p.vr * dt;
         p.flip += 1.6 * dt;
         drawPetal(p);
